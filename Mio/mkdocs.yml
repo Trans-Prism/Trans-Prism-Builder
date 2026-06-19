@@ -1,0 +1,23 @@
+site_name: MioMtF Wiki
+docs_dir: docs  # 使用 docs 目录（VitePress 兼容）
+use_directory_urls: false
+
+theme:
+  name: material
+  language: zh
+  features:
+    - search.suggest
+  palette:
+    primary: indigo
+    accent: indigo
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - awesome-pages
