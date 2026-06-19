@@ -21,8 +21,16 @@ def clean_miomtfwiki_repo():
         # 3. 所有的 .md 说明文档 (如 README.md, index.md) 给予保留
         # 4. 所有 .yml 配置文件
         # 5. package.json 等 node 项目文件
+        # 6. 包含 .py 脚本的目录（工具链目录）必须保留
         if item in whitelist or item.endswith('.py') or item.endswith('.md') or item.endswith('.yml') or item == 'package.json' or item == 'package-lock.json' or item == '.gitattributes' or item == '.gitignore' or item.startswith('.'):
             continue
+
+        # 🛡️ 跳过包含 Python 脚本的目录（工具链目录，如 Mio/、mtf/ 等）
+        if os.path.isdir(item):
+            has_py_scripts = any(f.endswith('.py') for f in os.listdir(item) if os.path.isfile(os.path.join(item, f)))
+            if has_py_scripts:
+                print(f"🔒 保留工具链目录: {item}/（包含 Python 流水线脚本）")
+                continue
 
         try:
             if os.path.isdir(item):
