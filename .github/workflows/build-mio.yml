@@ -31,27 +31,27 @@ jobs:
 
     - name: Run Python Toolchain
       run: |
-        python clean_repo.py
+        python Mio/clean_repo.py
         sleep 2
-        python fix_index.py
+        python Mio/fix_index.py
         sleep 2
-        python fix_yaml.py
+        python Mio/fix_yaml.py
         sleep 2
-        python compress_wiki.py
+        python Mio/compress_wiki.py
         sleep 2
-        python compress_webp.py
+        python Mio/compress_webp.py
         sleep 2
-        python nuke_pdfs.py
+        python Mio/nuke_pdfs.py
         sleep 2
-        python fix_hugo_syntax.py
+        python Mio/fix_hugo_syntax.py
         sleep 2
-        python fix_nav.py
+        python Mio/fix_nav.py
         sleep 2
-        python move_static.py
+        python Mio/move_static.py
         sleep 2
 
     - name: Build MkDocs Site
-      run: mkdocs build
+      run: mkdocs build --config-file Mio/mkdocs.yml --site-dir ../site
 
     - name: Zip Artifact
       run: |
