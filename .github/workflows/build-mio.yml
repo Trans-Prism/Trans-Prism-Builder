@@ -10,26 +10,60 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      
+
     defaults:
       run:
         working-directory: ./
 
     steps:
-    - name: Checkout Repo
+    - name: Checkout Builder Repo
       uses: actions/checkout@v4
 
-    - name: Set up Python & Install Tools
+    - name: Check Upstream Hash
+      id: check
+      run: |
+        UPSTREAM_URL="https://github.com/KitsuMio/MioMtFWiki.git"
+        LATEST_HASH=$(git -c credential.helper= ls-remote $UPSTREAM_URL HEAD | awk '{print $1}')
+
+        LOCAL_HASH=""
+        if [ -f "Mio/last_sync_hash.txt" ]; then
+          LOCAL_HASH=$(cat Mio/last_sync_hash.txt)
+        fi
+
+        if [ "$LATEST_HASH" == "$LOCAL_HASH" ]; then
+          echo "HAS_CHANGES=false" >> $GITHUB_OUTPUT
+        else
+          echo "HAS_CHANGES=true" >> $GITHUB_OUTPUT
+          echo "LATEST_HASH=$LATEST_HASH" >> $GITHUB_ENV
+        fi
+
+    - name: Clone Upstream Wiki
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      run: |
+        # 用 curl 下载 tarball 替代 git clone，彻底绕开 credential helper 问题
+        curl -sL https://github.com/KitsuMio/MioMtFWiki/archive/HEAD.tar.gz -o upstream.tar.gz
+        mkdir -p official-source
+        tar xzf upstream.tar.gz -C official-source --strip-components=1
+        rm -f upstream.tar.gz
+        # MioMtF 上游使用 docs/ 目录（VitePress 项目）
+        mv official-source/docs ./docs
+        if [ -d "official-source/static" ]; then mv official-source/static ./static; fi
+        rm -rf official-source
+
+    - name: Set up Python & Install MkDocs
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        
+
     - name: Install Dependencies
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
         python -m pip install --upgrade pip
         pip install mkdocs mkdocs-material Pillow mkdocs-awesome-pages-plugin
 
     - name: Run Python Toolchain
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
         python Mio/clean_repo.py
         sleep 2
@@ -51,22 +85,50 @@ jobs:
         sleep 2
 
     - name: Build MkDocs Site
-      run: mkdocs build --config-file Mio/mkdocs.yml --site-dir ../site
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      run: |
+        # 将 Mio/mkdocs.yml 复制到根目录作为构建配置
+        # 因为 Mio/mkdocs.yml 中 docs_dir: docs 是相对路径，
+        # 而上游源码 docs/ 位于仓库根目录，复制后即可正确构建
+        cp Mio/mkdocs.yml ./mkdocs.yml
+        mkdocs build --site-dir site
+        rm -f mkdocs.yml
 
     - name: Zip Artifact
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
         RELEASE_DATE=$(date -d "+8 hours" +%Y-%m-%d)
         ZIP_NAME="miomtfwiki-site-$RELEASE_DATE.zip"
         mv site miomtfwiki-site-$RELEASE_DATE
         zip -r $ZIP_NAME miomtfwiki-site-$RELEASE_DATE
-        
+
         echo "ZIP_PATH=$ZIP_NAME" >> $GITHUB_ENV
         echo "TAG_NAME=build-$RELEASE_DATE" >> $GITHUB_ENV
 
     - name: Create GitHub Release
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       uses: softprops/action-gh-release@v2
       with:
         files: ${{ env.ZIP_PATH }}
         tag_name: ${{ env.TAG_NAME }}
         name: "MioMtF Wiki 自动构建版 ${{ env.TAG_NAME }}"
-        body: "🤖 MioMtF Wiki 自动构建发布"
+        body: "🤖 上游同步 Hash: `${{ env.LATEST_HASH }}`"
+
+    - name: Commit Sync Log
+      if: steps.check.outputs.HAS_CHANGES == 'true'
+      run: |
+        mkdir -p Mio
+        echo ${{ env.LATEST_HASH }} > Mio/last_sync_hash.txt
+
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+
+        git fetch origin ${{ github.ref_name }}
+        git reset --soft FETCH_HEAD
+
+        git add Mio/last_sync_hash.txt
+        git commit -m "📝 chore(mio): 自动更新指纹日志" || echo "无新日志需要提交"
+
+        git push origin HEAD:${{ github.ref_name }}
