@@ -1,0 +1,72 @@
+name: OTA Builder - MioMtF
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-mio-mtf:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    defaults:
+      run:
+        working-directory: ./
+
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python & Install Tools
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install mkdocs mkdocs-material Pillow mkdocs-awesome-pages-plugin
+
+    - name: Run Python Toolchain
+      run: |
+        python clean_repo.py
+        sleep 2
+        python fix_index.py
+        sleep 2
+        python fix_yaml.py
+        sleep 2
+        python compress_wiki.py
+        sleep 2
+        python compress_webp.py
+        sleep 2
+        python nuke_pdfs.py
+        sleep 2
+        python fix_hugo_syntax.py
+        sleep 2
+        python fix_nav.py
+        sleep 2
+        python move_static.py
+        sleep 2
+
+    - name: Build MkDocs Site
+      run: mkdocs build
+
+    - name: Zip Artifact
+      run: |
+        RELEASE_DATE=$(date -d "+8 hours" +%Y-%m-%d)
+        ZIP_NAME="miomtfwiki-site-$RELEASE_DATE.zip"
+        mv site miomtfwiki-site-$RELEASE_DATE
+        zip -r $ZIP_NAME miomtfwiki-site-$RELEASE_DATE
+        
+        echo "ZIP_PATH=$ZIP_NAME" >> $GITHUB_ENV
+        echo "TAG_NAME=build-$RELEASE_DATE" >> $GITHUB_ENV
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ${{ env.ZIP_PATH }}
+        tag_name: ${{ env.TAG_NAME }}
+        name: "MioMtF Wiki 自动构建版 ${{ env.TAG_NAME }}"
+        body: "🤖 MioMtF Wiki 自动构建发布"
