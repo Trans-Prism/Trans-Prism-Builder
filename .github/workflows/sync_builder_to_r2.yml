@@ -3,19 +3,33 @@ name: Sync Builder Release to R2
 on:
   release:
     types: [published]
+  workflow_dispatch: # 🚀 新增：允许在 Actions 页面手动点击 Run workflow
 
 jobs:
   mirror-and-cleanup:
     runs-on: ubuntu-latest
     steps:
+      - name: 🏷️ 确定目标版本号
+        id: get_tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TARGET_TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name')
+            echo "手动触发机制：将强制拉取并推送最新数据包 $TARGET_TAG"
+          else
+            TARGET_TAG="${{ github.event.release.tag_name }}"
+            echo "自动发布机制：正在处理数据包 $TARGET_TAG"
+          fi
+          echo "TARGET_TAG=$TARGET_TAG" >> $GITHUB_ENV
+
       - name: 📥 下载离线数据包附件
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir release_assets
-          echo "正在拉取数据版本: ${{ github.event.release.tag_name }}"
-          # gh CLI 会自动抓取 Release 下所有的 zip 和 json
-          gh release download ${{ github.event.release.tag_name }} --dir release_assets
+          echo "正在拉取数据包..."
+          gh release download ${{ env.TARGET_TAG }} --dir release_assets
           
       - name: 🔑 配置 Cloudflare R2 密钥
         uses: aws-actions/configure-aws-credentials@v4
@@ -26,20 +40,16 @@ jobs:
 
       - name: 🚀 同步至 R2 (/builder/ 命名空间)
         run: |
-          # 归档该批次的数据包至对应版本号目录
-          aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/${{ github.event.release.tag_name }}/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
-          # 覆盖最新版资源目录
+          aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/${{ env.TARGET_TAG }}/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
           aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
 
       - name: 🧹 清理 R2 历史离线包 (仅保留最近 5 个)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 严格提取 GitHub 最新 5 次发布记录
           LATEST_TAGS=$(gh api repos/${{ github.repository }}/releases --jq '.[0:5] | .[].tag_name')
           echo "受保护的数据包版本: $LATEST_TAGS"
           
-          # 遍历 R2 专属命名空间
           S3_DIRS=$(aws s3 ls s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/ --endpoint-url ${{ secrets.R2_ENDPOINT }} | awk '{print $2}' | sed 's/\///')
           
           for dir in $S3_DIRS; do
