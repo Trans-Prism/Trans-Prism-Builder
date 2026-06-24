@@ -72,24 +72,24 @@ jobs:
         npm install
         npm run build
 
-    - name: Package Dist and Generate Version JSON
+    - name: Package Dist
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
-        cd official-source/dist
-        zip -r ../../hrt_tracker_update.zip *
-        cd ../..
+        RELEASE_DATE=$(date -d "+8 hours" +%Y-%m-%d)
+        echo "RELEASE_DATE=$RELEASE_DATE" >> $GITHUB_ENV
         
-        # 动态组装下载直链
-        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/tracker-${{ env.LATEST_HASH }}/hrt_tracker_update.zip"
-        echo "{\"hash\": \"${{ env.LATEST_HASH }}\", \"url\": \"$DOWNLOAD_URL\"}" > version.json
+        cd official-source/dist
+        zip -r ../../hrt_tracker_update-$RELEASE_DATE.zip *
+        cd ../..
 
     - name: Create GitHub Release
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_DATE: ${{ env.RELEASE_DATE }}
       run: |
-        TAG_NAME="tracker-${{ env.LATEST_HASH }}"
-        gh release create "$TAG_NAME" hrt_tracker_update.zip version.json \
+        TAG_NAME="tracker-${RELEASE_DATE}"
+        gh release create "$TAG_NAME" hrt_tracker_update-${RELEASE_DATE}.zip \
           --title "Tracker 自动构建版 $TAG_NAME" \
           --notes "🤖 上游同步 Hash: \`${{ env.LATEST_HASH }}\`"
 
