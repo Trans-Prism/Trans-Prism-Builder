@@ -68,6 +68,47 @@ jobs:
         else:
             print("vite.config.ts not found!")
 
+    - name: Strip CDN Dependencies from Source HTML (Import Map + Tailwind CDN)
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      shell: python
+      run: |
+        """TransMTF HRT Tracker 的 index.html 使用 ESM import map 从 CDN 动态加载
+        React/react-dom/recharts/lucide-react 等依赖。离线 WebView 无法访问这些 CDN，
+        必须剥离 import map，强制 Vite 把全部依赖从 node_modules bundle 进产物。
+
+        同时移除 <script src="https://cdn.tailwindcss.com"> 阻塞脚本（CSS 变量已内联）。"""
+        import os, re
+
+        index_path = "official-source/index.html"
+        if not os.path.exists(index_path):
+            print("index.html not found!")
+            exit(1)
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # 1. 移除 tailwindcss CDN 脚本
+        html = re.sub(
+            r'<script[^>]*src="https://cdn\.tailwindcss\.com[^"]*"[^>]*></script>\s*',
+            '',
+            html,
+            flags=re.IGNORECASE,
+        )
+        print("Removed CDN tailwindcss script")
+
+        # 2. 移除 import map 块（含前后空白）
+        html = re.sub(
+            r'\s*<script type="importmap">.*?</script>\s*',
+            '\n',
+            html,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        print("Removed ESM import map")
+
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        print("index.html cleaned successfully")
+
     - name: Build Upstream Tracker
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
