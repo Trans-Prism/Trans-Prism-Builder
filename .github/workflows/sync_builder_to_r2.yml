@@ -3,7 +3,7 @@ name: Sync Builder Release to R2
 on:
   workflow_dispatch: # 手动触发测试
   workflow_run:
-    workflows: ["OTA Builder - Oyama's HRT Tracker", "OTA Builder - FtM", "OTA Builder - MioMtF", "OTA Builder - MtF", "OTA Builder - RLE"]
+    workflows: ["OTA Builder - Oyama's HRT Tracker", "OTA Builder - TransMTF HRT Tracker", "OTA Builder - FtM", "OTA Builder - MioMtF", "OTA Builder - MtF", "OTA Builder - RLE"]
     types:
       - completed
 
@@ -21,8 +21,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          # 定义我们要维护的 5 大项目前缀
-          PROJECTS=("tracker" "mtf" "ftm" "rle" "miomtfwiki")
+          # 定义我们要维护的 6 大项目前缀
+          PROJECTS=("tracker" "transmtf_tracker" "mtf" "ftm" "rle" "miomtfwiki")
           
           for proj in "${PROJECTS[@]}"; do
             echo "========================================"

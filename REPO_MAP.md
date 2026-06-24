@@ -58,7 +58,7 @@ Trans-Prism-Builder 是 Trans Prism 生态中的 **云端内容构建与分发�
 
 ## 文件职责地图
 
-Builder 按上游项目分为 5 个子目录（`mtf/`、`ftm/`、`Mio/`、`rle/`、`tracker/`），每个目录内是一组针对该上游量身定制的脚本。`tracker/` 仅存指纹日志（走 npm 构建，无需 Python）。`ftm/` 与 `mtf/` 的脚本集几乎相同，`rle/` 与 `Mio/` 因上游用 VitePress 而有专属脚本。
+Builder 按上游项目分为 6 个子目录（`mtf/`、`ftm/`、`Mio/`、`rle/`、`tracker/`、`transmtf_tracker/`），每个目录内是一组针对该上游量身定制的脚本。`tracker/` 与 `transmtf_tracker/` 仅存指纹日志（走 npm 构建，无需 Python）。`ftm/` 与 `mtf/` 的脚本集几乎相同，`rle/` 与 `Mio/` 因上游用 VitePress 而有专属脚本。
 
 ### 通用脚本职责（以 mtf/ 为基准，各项目存在同名变体）
 
@@ -162,16 +162,23 @@ Builder 按上游项目分为 5 个子目录（`mtf/`、`ftm/`、`Mio/`、`rle/`
 - **产出**：ZIP `miomtfwiki-site-{date}.zip`，tag `build-{date}`（前缀用 miomtfwiki）
 - **特殊点**：脚本用 Hugo 翻译器 `fix_hugo_syntax.py`（Mio 上游虽是 VitePress 文档但内含 Hugo 短码），无 move_static
 
-### 5. [`build_tracker.yml`](Trans-Prism-Builder/.github/workflows/build_tracker.yml) — HRT Tracker 构建
+### 5. [`build_tracker.yml`](Trans-Prism-Builder/.github/workflows/build_tracker.yml) — Oyama HRT Tracker 构建
 - **触发**：`cron: '0 19 * * *'`（UTC 19:00 = 北京 03:00）；`workflow_dispatch`
 - **上游**：`https://github.com/SmirnovaOyama/Oyama-s-HRT-Tracker.git`（Vite + React 前端项目，非 Wiki）
 - **执行**：**Node.js 20 而非 Python**；`git clone --depth 1`；用内联 Python 给 `vite.config.ts` 注入 `base: './'`（相对路径，供 App 离线 WebView 加载）；`npm install && npm run build`；打包 `dist/`
 - **产出**：ZIP `hrt_tracker_update-{date}.zip`，tag `tracker-{date}`，用 `gh release create`
 - **特殊点**：不经过 MkDocs，是纯前端构建；指纹日志写到 `tracker/last_sync_hash.txt`
 
-### 6. [`sync_builder_to_r2.yml`](Trans-Prism-Builder/.github/workflows/sync_builder_to_r2.yml) — R2 分发器
-- **触发**：`workflow_run`——当上述 5 个构建 Workflow **任一 completed** 时自动级联；`workflow_dispatch` 手动测试
-- **执行**：遍历 5 个项目前缀（`tracker mtf ftm rle miomtfwiki`），用 `gh api` + `jq` 找出该前缀的最新 tag，下载其 Release 资产；上传到 R2 `builder/releases/{tag}/`（版本归档）；清理 R2 `builder/latest/` 下该前缀旧 `.zip`；生成 `{proj}_latest.json`（含 `latest_file`/`tag`/`update_time`）；同步到 `builder/latest/`。
+### 6. [`build_transmtf_tracker.yml`](Trans-Prism-Builder/.github/workflows/build_transmtf_tracker.yml) — TransMTF HRT Tracker 构建
+- **触发**：`cron: '30 19 * * *'`（UTC 19:30 = 北京 03:30）接在 Oyama Tracker 之后错峰；`workflow_dispatch`
+- **上游**：`https://github.com/TransmtfTeam/Transmtf-HRT-Tracker.git`（Vite + React + TypeScript，含 react-router-dom v7 多路由 SPA）
+- **执行**：Node.js 20；`git clone --depth 1`；用内联 Python 注入 `base: './'`（相对路径）→ `npm install && npm run build` → Python 剥离 PWA Service Worker 注册 → 打包 `dist/`
+- **产出**：ZIP `transmtf_tracker_update-{date}.zip`，tag `transmtf-{date}`，用 `gh release create`
+- **特殊点**：不经过 MkDocs，是纯前端构建；额外剥离 `vite-plugin-pwa` 生成的 Service Worker（避免 WebView 内缓存冲突）；指纹日志写到 `transmtf_tracker/last_sync_hash.txt`
+
+### 7. [`sync_builder_to_r2.yml`](Trans-Prism-Builder/.github/workflows/sync_builder_to_r2.yml) — R2 分发器
+- **触发**：`workflow_run`——当上述 6 个构建 Workflow **任一 completed** 时自动级联；`workflow_dispatch` 手动测试
+- **执行**：遍历 6 个项目前缀（`tracker transmtf_tracker mtf ftm rle miomtfwiki`），用 `gh api` + `jq` 找出该前缀的最新 tag，下载其 Release 资产；上传到 R2 `builder/releases/{tag}/`（版本归档）；清理 R2 `builder/latest/` 下该前缀旧 `.zip`；生成 `{proj}_latest.json`（含 `latest_file`/`tag`/`update_time`）；同步到 `builder/latest/`。
 - **产出**：R2 上的版本归档目录 + 最新版 ZIP + 版本协商 JSON（客户端热更新契约）
 
 ---
@@ -216,14 +223,22 @@ Builder **不使用自定义 HTML 模板**。它的"模板"实际上是：
 
 ### Tracker 特殊结构
 
-HRT Tracker 不走 MkDocs，而是 Vite 构建的 SPA：
+HRT Tracker（Oyama / TransMTF）不走 MkDocs，而是 Vite 构建的 SPA：
 ```
 hrt_tracker_update-{date}.zip  (内含 dist/)
   index.html
   assets/index-{hash}.js / .css
   manifest.webmanifest, sw.js, registerSW.js  (PWA)
 ```
+或
+```
+transmtf_tracker_update-{date}.zip  (内含 dist/)
+  index.html
+  assets/index-{hash}.js / .css
+  manifest.webmanifest, sw.js, registerSW.js  (PWA)
+```
 其"模板"是上游仓库自带的 React 组件与 Vite 配置，Builder 仅注入 `base: './'` 以支持离线相对加载。
+TransMTF 额外执行一步 PWA Service Worker 剥离，避免 WebView 内缓存状态与 App 热更新机制冲突。
 
 ### Release / 版本命名契约
 
@@ -233,7 +248,8 @@ hrt_tracker_update-{date}.zip  (内含 dist/)
 | FtM | `ftm-wiki-site-{date}.zip` | `ftm-{date}` | ftm | ftm |
 | RLE | `rle-wiki-site-{date}.zip` | `rle-{date}` | rle | rle |
 | Mio | `miomtfwiki-site-{date}.zip` | `build-{date}` | miomtfwiki | miomtfwiki |
-| Tracker | `hrt_tracker_update-{date}.zip` | `tracker-{date}` | tracker | tracker |
+| Oyama Tracker | `hrt_tracker_update-{date}.zip` | `tracker-{date}` | tracker | tracker |
+| TransMTF Tracker | `transmtf_tracker_update-{date}.zip` | `transmtf-{date}` | transmtf_tracker | transmtf_tracker |
 
 R2 上每个项目维护一份 `{prefix}_latest.json`：
 ```json
@@ -247,7 +263,8 @@ R2 上每个项目维护一份 `{prefix}_latest.json`：
 ### Builder 生成什么
 
 - **Wiki 离线包**：mtf / ftm / rle / miomtfwiki 四个 MkDocs 静态站点 ZIP
-- **HRT Tracker 离线包**：tracker 的 Vite build 产物 ZIP
+- **HRT Tracker 离线包**：tracker（Oyama）的 Vite build 产物 ZIP
+- **TransMTF HRT Tracker 离线包**：transmtf_tracker 的 Vite build 产物 ZIP
 - **版本协商 JSON**：R2 上各项目的 `{prefix}_latest.json`
 
 ### 主项目消费什么
@@ -305,7 +322,7 @@ Builder 的 `last_sync_hash.txt`（上游指纹）与 App 的 `.{type}-wiki-site
 
 ### 修改 Workflow
 
-1. **改触发时间/错峰**：直接改各 build workflow 的 `cron`，注意前缀为 UTC，且 5 个项目当前按 02:00/02:10/02:20/03:00 错峰，避免 R2 同步级联拥堵。
+1. **改触发时间/错峰**：直接改各 build workflow 的 `cron`，注意前缀为 UTC，且 6 个项目当前按 02:00/02:10/02:20/03:00/03:30 错峰，避免 R2 同步级联拥堵。
 2. **改工具链顺序**：在 `Run Python Toolchain` 步骤调整 `python xxx.py` 调用顺序——记住"先 clean 再压缩、先 move_static 再 fix 语法"的依赖：`fix_hugo_syntax` 依赖 `content/static` 已就位，所以 `move_static` 须在其前。
 3. **新增项目**：复制一个最接近的 workflow（Hugo 系抄 mtf，VitePress 系抄 rle），改 `UPSTREAM_URL`、`working-directory`、ZIP/tag 命名前缀；然后在 [`sync_builder_to_r2.yml`](Trans-Prism-Builder/.github/workflows/sync_builder_to_r2.yml:25) 的 `PROJECTS` 数组加入新前缀；最后在主项目 App 的 `WikiCatalog` 注册新 wikiType 与 R2 base URL。
 4. **Tracker 类前端项目**：参考 [`build_tracker.yml`](Trans-Prism-Builder/.github/workflows/build_tracker.yml) 的 Node 流程与 `base: './'` 注入逻辑，不要套用 MkDocs 工具链。

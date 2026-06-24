@@ -27,7 +27,8 @@
 | **FtM Wiki** | [project-trans/FtM-wiki](https://github.com/project-trans/FtM-wiki) | Hugo | `ftm-wiki-site-{date}.zip` |
 | **RLE Wiki** | [project-trans/RLE-wiki](https://github.com/project-trans/RLE-wiki) | VitePress | `rle-wiki-site-{date}.zip` |
 | **MioMtF Wiki** | [KitsuMio/MioMtFWiki](https://github.com/KitsuMio/MioMtFWiki) | VitePress | `miomtfwiki-site-{date}.zip` |
-| **HRT Tracker** | [SmirnovaOyama/Oyama-s-HRT-Tracker](https://github.com/SmirnovaOyama/Oyama-s-HRT-Tracker) | Vite+React | `hrt_tracker_update-{date}.zip` |
+| **HRT Tracker (Oyama)** | [SmirnovaOyama/Oyama-s-HRT-Tracker](https://github.com/SmirnovaOyama/Oyama-s-HRT-Tracker) | Vite+React | `hrt_tracker_update-{date}.zip` |
+| **HRT Tracker (TransMTF)** | [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker) | Vite+React | `transmtf_tracker_update-{date}.zip` |
 
 ---
 
@@ -54,7 +55,8 @@ fix_vite_syntax.py     → VitePress 容器 → MkDocs Admonition（rle 专属�
 
 | Workflow | 触发 | 时间（北京时间） |
 |----------|------|----------------|
-| MtF / FtM / RLE / Tracker | Cron 每日 | 02:00~03:00 错峰 |
+| MtF / FtM / RLE | Cron 每日 | 02:00~02:20 错峰 |
+| Oyama Tracker / TransMTF Tracker | Cron 每日 | 03:00~03:30 错峰 |
 | Mio | Push（频率低） | 上游变化时 |
 | R2 同步 | 上述任一完成后自动级联 | — |
 
@@ -66,14 +68,15 @@ fix_vite_syntax.py     → VitePress 容器 → MkDocs Admonition（rle 专属�
 
 ```
 .github/workflows/
-├── build-mtf.yml             # MtF Wiki 构建
-├── build-ftm.yml             # FtM Wiki 构建
-├── build-rle.yml             # RLE Wiki 构建
-├── build-mio.yml             # MioMtF Wiki 构建
-├── build_tracker.yml         # HRT Tracker 构建
-└── sync_builder_to_r2.yml    # R2 镜像分发
+├── build-mtf.yml                 # MtF Wiki 构建
+├── build-ftm.yml                 # FtM Wiki 构建
+├── build-rle.yml                 # RLE Wiki 构建
+├── build-mio.yml                 # MioMtF Wiki 构建
+├── build_tracker.yml             # Oyama HRT Tracker 构建
+├── build_transmtf_tracker.yml    # TransMTF HRT Tracker 构建
+└── sync_builder_to_r2.yml        # R2 镜像分发
 
-mtf/  ftm/  Mio/  rle/  tracker/     # 各项目目录
+mtf/  ftm/  Mio/  rle/  tracker/  transmtf_tracker/  # 各项目目录
   ├── clean_repo.py                    # Python 工具脚本
   ├── compress_wiki.py
   ├── ...
@@ -88,7 +91,8 @@ mtf/  ftm/  Mio/  rle/  tracker/     # 各项目目录
 - **原创代码**：[Apache License 2.0](LICENSE.txt)
 - **MtF/FtM/RLE Wiki 衍生**：[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 - **MioMtF Wiki 衍生**：[CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/)
-- **HRT Tracker 衍生**：[MIT](https://opensource.org/licenses/MIT)
+- **Oyama HRT Tracker 衍生**：[MIT](https://opensource.org/licenses/MIT)
+- **TransMTF HRT Tracker 衍生**：[MIT](https://opensource.org/licenses/MIT)
 
 ---
 
