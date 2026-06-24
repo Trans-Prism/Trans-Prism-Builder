@@ -1,9 +1,16 @@
 name: Sync Builder Release to R2
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch: # 🚀 恢复为无需输入的纯净点击按钮
+  workflow_run:
+    workflows:
+      - OTA Builder - Oyama's HRT Tracker
+      - OTA Builder - FtM
+      - OTA Builder - MioMtF
+      - OTA Builder - MtF
+      - OTA Builder - RLE
+    types:
+      - completed
+  workflow_dispatch:
 
 jobs:
   mirror-and-cleanup:
