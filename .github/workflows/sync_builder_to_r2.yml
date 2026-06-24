@@ -3,7 +3,7 @@ name: Sync Builder Release to R2
 on:
   release:
     types: [published]
-  workflow_dispatch: # 允许在 Actions 页面手动点击运行
+  workflow_dispatch: # 🚀 恢复为无需输入的纯净点击按钮
 
 jobs:
   mirror-and-cleanup:
@@ -12,36 +12,40 @@ jobs:
       - name: 🗂️ 检出代码库 (获取 Git 上下文)
         uses: actions/checkout@v4
 
-      - name: 🏷️ 确定目标版本号
-        id: get_tag
+      - name: 🚀 批量拉取并同步至 R2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            TARGET_TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name')
-            echo "手动触发机制：将强制拉取并推送最新数据包 $TARGET_TAG"
-          else
-            TARGET_TAG="${{ github.event.release.tag_name }}"
-            echo "自动发布机制：正在处理数据包 $TARGET_TAG"
-          fi
-          echo "TARGET_TAG=$TARGET_TAG" >> $GITHUB_ENV
-
-      - name: 📥 下载离线数据包附件
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir release_assets
-          echo "正在拉取数据包..."
-          gh release download ${{ env.TARGET_TAG }} --dir release_assets
-          
-      - name: 🚀 同步至 R2 (/builder/ 命名空间)
-        env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/${{ env.TARGET_TAG }}/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
-          aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "手动触发机制：将自动抓取最新的 5 个 Release..."
+            # 获取最新的 5 个 Tag/Hash
+            TARGET_TAGS=$(gh api repos/${{ github.repository }}/releases --jq '.[0:5] | .[].tag_name')
+          else
+            echo "自动发布机制：仅处理本次触发的 Release..."
+            TARGET_TAGS="${{ github.event.release.tag_name }}"
+          fi
+          
+          # 开始循环处理每个版本
+          for tag in $TARGET_TAGS; do
+            echo "----------------------------------------"
+            echo "📦 正在处理版本: $tag"
+            
+            # 清空并重建临时下载目录，防止不同版本文件混淆
+            rm -rf release_assets
+            mkdir release_assets
+            
+            # 下载该 tag 的所有附件
+            gh release download "$tag" --dir release_assets
+            
+            # 归档该批次的数据包至对应 Hash/Tag 目录
+            aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/$tag/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
+            
+            # 覆盖更新最新版资源目录
+            aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
+          done
 
       - name: 🧹 清理 R2 历史离线包 (仅保留最近 5 个)
         env:
