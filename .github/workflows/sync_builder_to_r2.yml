@@ -2,15 +2,10 @@ name: Sync Builder Release to R2
 
 on:
   workflow_run:
-    workflows:
-      - OTA Builder - Oyama's HRT Tracker
-      - OTA Builder - FtM
-      - OTA Builder - MioMtF
-      - OTA Builder - MtF
-      - OTA Builder - RLE
+    workflows: ["OTA Builder - Oyama's HRT Tracker", "OTA Builder - FtM", "OTA Builder - MioMtF", "OTA Builder - MtF", "OTA Builder - RLE"]
     types:
       - completed
-  workflow_dispatch:
+  workflow_dispatch: # 依然保留手动点击的按钮
 
 jobs:
   mirror-and-cleanup:
@@ -26,31 +21,31 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "手动触发机制：将自动抓取最新的 5 个 Release..."
-            # 获取最新的 5 个 Tag/Hash
-            TARGET_TAGS=$(gh api repos/${{ github.repository }}/releases --jq '.[0:5] | .[].tag_name')
-          else
-            echo "自动发布机制：仅处理本次触发的 Release..."
-            TARGET_TAGS="${{ github.event.release.tag_name }}"
+          echo "触发事件类型: ${{ github.event_name }}"
+          echo "执行全量增量同步：将始终检查并同步最新的 5 个 Release..."
+          
+          # 直接获取最新的 5 个 Tag，无视触发机制
+          TARGET_TAGS=$(gh api repos/${{ github.repository }}/releases --jq '.[0:5] | .[].tag_name')
+          
+          if [ -z "$TARGET_TAGS" ]; then
+            echo "❌ 仓库中未找到任何 Release！"
+            exit 1
           fi
           
-          # 开始循环处理每个版本
+          # 开始循环处理
           for tag in $TARGET_TAGS; do
             echo "----------------------------------------"
-            echo "📦 正在处理版本: $tag"
+            echo "📦 正在校验与同步版本: $tag"
             
-            # 清空并重建临时下载目录，防止不同版本文件混淆
+            # 清空并重建临时下载目录
             rm -rf release_assets
             mkdir release_assets
             
             # 下载该 tag 的所有附件
             gh release download "$tag" --dir release_assets
             
-            # 归档该批次的数据包至对应 Hash/Tag 目录
+            # S3 Sync 是增量同步的，存在的文件会光速跳过，新文件才会上传
             aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/$tag/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
-            
-            # 覆盖更新最新版资源目录
             aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
           done
 
