@@ -9,6 +9,8 @@ jobs:
   mirror-and-cleanup:
     runs-on: ubuntu-latest
     steps:
+      - name: 🗂️ 检出代码库 (获取 Git 上下文)
+        uses: actions/checkout@v4
       - name: 🏷️ 确定目标版本号
         id: get_tag
         env:
