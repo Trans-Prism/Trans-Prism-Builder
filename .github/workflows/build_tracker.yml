@@ -27,11 +27,14 @@ jobs:
           LOCAL_HASH=$(cat tracker/last_sync_hash.txt)
         fi
         
+        # 始终输出 LATEST_HASH，确保后续步骤在任何触发条件下都能访问
+        echo "LATEST_HASH=$LATEST_HASH" >> $GITHUB_ENV
+        echo "LATEST_HASH=$LATEST_HASH" >> $GITHUB_OUTPUT
+        
         if [ "$LATEST_HASH" == "$LOCAL_HASH" ]; then
           echo "HAS_CHANGES=false" >> $GITHUB_OUTPUT
         else
           echo "HAS_CHANGES=true" >> $GITHUB_OUTPUT
-          echo "LATEST_HASH=$LATEST_HASH" >> $GITHUB_ENV
         fi
 
     - name: Set up Node.js
