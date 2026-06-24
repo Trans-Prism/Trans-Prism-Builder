@@ -173,7 +173,7 @@ Builder 按上游项目分为 6 个子目录（`mtf/`、`ftm/`、`Mio/`、`rle/`
 - **触发**：`cron: '30 19 * * *'`（UTC 19:30 = 北京 03:30）接在 Oyama Tracker 之后错峰；`workflow_dispatch`
 - **上游**：`https://github.com/TransmtfTeam/Transmtf-HRT-Tracker.git`（Vite + React + TypeScript，含 react-router-dom v7 多路由 SPA）
 - **执行**：Node.js 20；`git clone --depth 1`；用内联 Python 注入 `base: './'`（相对路径）→ `npm install && npm run build` → Python 剥离 PWA Service Worker 注册 → 打包 `dist/`
-- **产出**：ZIP `transmtf_tracker_update-{date}.zip`，tag `transmtf-{date}`，用 `gh release create`
+- **产出**：ZIP `transmtf_tracker_update-{date}.zip`，tag `transmtf_tracker-{date}`，用 `gh release create`
 - **特殊点**：不经过 MkDocs，是纯前端构建；额外剥离 `vite-plugin-pwa` 生成的 Service Worker（避免 WebView 内缓存冲突）；指纹日志写到 `transmtf_tracker/last_sync_hash.txt`
 
 ### 7. [`sync_builder_to_r2.yml`](Trans-Prism-Builder/.github/workflows/sync_builder_to_r2.yml) — R2 分发器
@@ -249,7 +249,7 @@ TransMTF 额外执行一步 PWA Service Worker 剥离，避免 WebView 内缓存
 | RLE | `rle-wiki-site-{date}.zip` | `rle-{date}` | rle | rle |
 | Mio | `miomtfwiki-site-{date}.zip` | `build-{date}` | miomtfwiki | miomtfwiki |
 | Oyama Tracker | `hrt_tracker_update-{date}.zip` | `tracker-{date}` | tracker | tracker |
-| TransMTF Tracker | `transmtf_tracker_update-{date}.zip` | `transmtf-{date}` | transmtf_tracker | transmtf_tracker |
+| TransMTF Tracker | `transmtf_tracker_update-{date}.zip` | `transmtf_tracker-{date}` | transmtf_tracker | transmtf_tracker |
 
 R2 上每个项目维护一份 `{prefix}_latest.json`：
 ```json
