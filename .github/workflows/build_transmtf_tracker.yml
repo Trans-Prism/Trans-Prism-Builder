@@ -98,8 +98,9 @@ jobs:
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
 
-        # Update module entry to point to index.tsx
+        # Update module entry to point to index.tsx (handle both ./src/main.tsx and /src/main.tsx)
         html = html.replace('./src/main.tsx', './index.tsx')
+        html = html.replace('/src/main.tsx', '/index.tsx')
 
         # Remove any import map (safety cleanup)
         html = re.sub(
