@@ -50,11 +50,27 @@ jobs:
     - name: Scaffold Fresh Vite Project (avoid import map CDN issue)
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
-        # Per upstream README: create clean Vite project, install deps, copy source
+        # Upstream index.html ships an esm.sh import map + cdn.tailwindcss.com runtime
+        # compiler that cannot resolve in CI. Per upstream README we scaffold a clean
+        # Vite project (deps from node_modules, no import map) and copy source in.
         npm create vite@latest offline-build -- --template react-ts
         cd offline-build
         npm install
-        npm install recharts lucide-react uuid @types/uuid clsx tailwind-merge
+        # Install the FULL upstream dependency set, pinned to upstream package.json ranges.
+        # Rationale:
+        #  - react/react-dom@18: scaffold ships React 19 but upstream targets 18.
+        #  - lucide-react@^0.344.0: MUST be pinned — newer lucide (1.x) removed the
+        #    branded `Github` icon used by src/pages/SettingsPage.tsx, which breaks the
+        #    build with MISSING_EXPORT "Github".
+        #  - html-to-image / jsqr / prop-types / qrcode.react / react-router-dom: declared
+        #    in upstream package.json but were missing here, so any feature using them
+        #    would have broken once the type-export errors below were fixed.
+        npm install --save-exact react@^18.3.1 react-dom@^18.3.1
+        npm install --save-exact lucide-react@^0.344.0
+        npm install recharts@^2.12.7 uuid@^9.0.1 @types/uuid@^10.0.0 \
+                    clsx@^2.1.1 tailwind-merge@^3.4.0 \
+                    html-to-image@^1.11.13 jsqr@1.4.0 prop-types@15.8.1 \
+                    qrcode.react@^4.1.0 react-router-dom@^7.11.0
 
     - name: Copy Upstream Source into Fresh Project
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
@@ -162,6 +178,50 @@ jobs:
             print("vite.config.ts: stripped VitePWA plugin")
         else:
             print("vite.config.ts: no PWA plugin to strip")
+
+        # ── 3b. Inject '@' path alias (project root) into vite.config.ts ──
+        # Upstream vite.config.ts + tsconfig.json declare an alias '@' → project root
+        # (NOT ./src), and some source files import via '@/...'. The scaffold's
+        # vite.config.ts has no resolve.alias, so those imports would fail to resolve.
+        # Inject a self-contained, valid ESM snippet: ensure `path` is imported and add
+        # `resolve.alias`. import.meta.dirname (Node 20.11+) gives the project root in ESM.
+        # NOTE: the replacement string is TS source text, NOT a Python expression — every
+        # identifier here lands verbatim in vite.config.ts.
+        if "resolve:" not in content:
+            if "import path from 'path'" not in content and "import path from \"path\"" not in content:
+                content = "import path from 'path';\n" + content
+            content = content.replace(
+                "plugins: [react()],",
+                "plugins: [react()],\n  resolve: { alias: { '@': path.resolve(import.meta.dirname, '.') } },",
+                1,
+            )
+            with open(vite_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print("vite.config.ts: injected '@' alias → project root")
+        else:
+            print("vite.config.ts: resolve already present, alias left as-is")
+
+        # ── 3c. Replace scaffold tsconfig with upstream's (drop verbatimModuleSyntax) ──
+        # CRITICAL: the Vite react-ts scaffold's tsconfig.app.json sets
+        # "verbatimModuleSyntax": true. Upstream re-exports types across modules using
+        # the mixed syntax `export { Route, type DoseEvent, ... } from './types'`. Under
+        # verbatimModuleSyntax (TS 5+ strict mode) Rolldown drops those type re-exports
+        # and downstream `import { DoseEvent }` fails with MISSING_EXPORT. Upstream's own
+        # tsconfig.json uses isolatedModules WITHOUT verbatimModuleSyntax, which is the
+        # configuration the source code was written against. We adopt upstream's tsconfig.
+        # Also copy upstream tsconfig.json over the scaffold root tsconfig (the scaffold
+        # uses a tsconfig.json that merely references tsconfig.app/node.json, which we
+        # are removing).
+        import shutil
+        upstream_tsconfig = os.path.join("official-source", "tsconfig.json")
+        dest_root_tsconfig = os.path.join(build_dir, "tsconfig.json")
+        shutil.copyfile(upstream_tsconfig, dest_root_tsconfig)
+        # Remove the scaffold's split tsconfig files so TS/Vite only sees upstream's.
+        for stale in ("tsconfig.app.json", "tsconfig.node.json"):
+            stale_path = os.path.join(build_dir, stale)
+            if os.path.exists(stale_path):
+                os.remove(stale_path)
+        print("tsconfig: replaced scaffold tsconfig with upstream (no verbatimModuleSyntax)")
 
         # ── 4. Fix ./src/ import paths inside src/ copies of root-level source files ──
         # Root-level sources (logic.ts, pk.ts, ...) reference modules as "./src/..."
