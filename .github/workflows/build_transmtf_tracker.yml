@@ -27,7 +27,6 @@ jobs:
           LOCAL_HASH=$(cat transmtf_tracker/last_sync_hash.txt)
         fi
 
-        # 始终输出 LATEST_HASH，确保后续步骤在任何触发条件下都能访问
         echo "LATEST_HASH=$LATEST_HASH" >> $GITHUB_ENV
         echo "LATEST_HASH=$LATEST_HASH" >> $GITHUB_OUTPUT
 
@@ -43,125 +42,123 @@ jobs:
       with:
         node-version: 20
 
-    - name: Clone Upstream Tracker
+    - name: Clone Upstream Tracker (Source Files)
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       run: |
         git clone --depth 1 https://github.com/TransmtfTeam/Transmtf-HRT-Tracker.git official-source
 
-    - name: Inject Relative Path Base to Vite Config
+    - name: Scaffold Fresh Vite Project (avoid import map CDN issue)
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      run: |
+        # Per upstream README: create clean Vite project, install deps, copy source
+        npm create vite@latest offline-build -- --template react-ts
+        cd offline-build
+        npm install
+        npm install recharts lucide-react uuid @types/uuid clsx tailwind-merge
+
+    - name: Copy Upstream Source into Fresh Project
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      run: |
+        # Upstream has index.tsx at root importing './src/...' 
+        # We preserve this structure: index.tsx at root, src/ below it
+
+        # 1. Remove scaffold src/ contents
+        rm -rf offline-build/src/*
+
+        # 2. Copy upstream's src/ (components, pages, contexts, etc.)
+        cp -r official-source/src/* offline-build/src/
+
+        # 3. Copy upstream's entry point to root (keeps './src/...' imports valid)
+        cp official-source/index.tsx offline-build/index.tsx
+
+        # 4. Copy root-level source files into src/ for clean organization
+        cp official-source/logic.ts offline-build/src/
+        cp official-source/pk.ts offline-build/src/
+        cp official-source/personalModel.ts offline-build/src/
+        cp official-source/calibration.ts offline-build/src/
+        cp official-source/types.ts offline-build/src/
+        cp official-source/worker.ts offline-build/src/
+        cp official-source/mipd.ts offline-build/src/
+
+        # 5. Copy public assets (favicon etc.)
+        cp -r official-source/public/* offline-build/public/ 2>/dev/null || true
+
+    - name: Inject Offline Configuration
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
       shell: python
       run: |
-        import os
-        vite_path = "official-source/vite.config.ts"
-        if os.path.exists(vite_path):
-            with open(vite_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            if "base:" not in content:
-                # 强行在 return { 后注入 base: './'
-                content = content.replace("return {", "return {\n    base: './',", 1)
-                with open(vite_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                print("Successfully injected base: './'")
-            else:
-                print("base is already configured, checking value...")
-        else:
-            print("vite.config.ts not found!")
-
-    - name: Strip CDN Dependencies from Source HTML (Import Map + Tailwind CDN)
-      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
-      shell: python
-      run: |
-        """TransMTF HRT Tracker 的 index.html 使用 ESM import map 从 CDN 动态加载
-        React/react-dom/recharts/lucide-react 等依赖。离线 WebView 无法访问这些 CDN，
-        必须剥离 import map，强制 Vite 把全部依赖从 node_modules bundle 进产物。
-
-        同时移除 <script src="https://cdn.tailwindcss.com"> 阻塞脚本（CSS 变量已内联）。"""
         import os, re
 
-        index_path = "official-source/index.html"
-        if not os.path.exists(index_path):
-            print("index.html not found!")
-            exit(1)
+        build_dir = "offline-build"
 
+        # ── 1. Rewrite index.html ──
+        # Change entry from ./src/main.tsx → ./index.tsx (upstream structure)
+        # Remove any import map or CDN scripts (scaffold may not have them, but be safe)
+        index_path = os.path.join(build_dir, "index.html")
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
 
-        # 1. 移除 tailwindcss CDN 脚本
-        html = re.sub(
-            r'<script[^>]*src="https://cdn\.tailwindcss\.com[^"]*"[^>]*></script>\s*',
-            '',
-            html,
-            flags=re.IGNORECASE,
-        )
-        print("Removed CDN tailwindcss script")
+        # Update module entry to point to index.tsx
+        html = html.replace('./src/main.tsx', './index.tsx')
 
-        # 2. 移除 import map 块（含前后空白）
+        # Remove any import map (safety cleanup)
         html = re.sub(
             r'\s*<script type="importmap">.*?</script>\s*',
             '\n',
             html,
             flags=re.DOTALL | re.IGNORECASE,
         )
-        print("Removed ESM import map")
+        # Remove CDN scripts (scaffold won't have this, but upstream index.html did)
+        html = re.sub(
+            r'<script[^>]*src="https://cdn\.tailwindcss\.com[^"]*"[^>]*></script>\s*',
+            '',
+            html,
+            flags=re.IGNORECASE,
+        )
 
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(html)
-        print("index.html cleaned successfully")
+        print("index.html: entry → ./index.tsx, CDN/importmap stripped")
 
-    - name: Build Upstream Tracker
-      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
-      run: |
-        cd official-source
-        npm install
-        npm run build
-
-    - name: Strip PWA Service Worker for Offline WebView
-      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
-      shell: python
-      run: |
-        """移除 PWA Service Worker 注册，防止 WebView 内 service worker 缓存干扰离线加载。"""
-        import os
-        import re
-
-        dist_dir = "official-source/dist"
-        index_path = os.path.join(dist_dir, "index.html")
-
-        if os.path.exists(index_path):
-            with open(index_path, "r", encoding="utf-8") as f:
-                html = f.read()
-
-            # 移除 <script> 标签中包含 'registerSW' 或 'vite-plugin-pwa' 的行
-            html = re.sub(
-                r'<script[^>]*registerSW[^>]*>.*?</script>\s*',
-                '',
-                html,
-                flags=re.DOTALL | re.IGNORECASE,
-            )
-            # 移除 vite-plugin-pwa 注入的注册脚本（以 registerSW 文件形式）
-            html = re.sub(
-                r'<script[^>]*src="[^"]*registerSW[^"]*"[^>]*></script>\s*',
-                '',
-                html,
-                flags=re.IGNORECASE,
-            )
-
-            with open(index_path, "w", encoding="utf-8") as f:
-                f.write(html)
-            print("Successfully stripped PWA service worker registration")
+        # ── 2. Inject base: './' into vite.config.ts ──
+        vite_path = os.path.join(build_dir, "vite.config.ts")
+        with open(vite_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if "base:" not in content:
+            content = content.replace("defineConfig({", "defineConfig({\n  base: './',", 1)
+            with open(vite_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print("vite.config.ts: injected base: './'")
         else:
-            print("dist/index.html not found!")
+            print("vite.config.ts: base already configured")
 
-        # 删除 registerSW.js 和 sw.js（如果存在）
-        for file_name in ["registerSW.js", "sw.js", "workbox-*.js"]:
-            for f in os.listdir(dist_dir):
-                if file_name.endswith("*.js"):
-                    if file_name.replace("*", "") in f and f.endswith(".js"):
-                        os.remove(os.path.join(dist_dir, f))
-                        print(f"Removed {f}")
-                elif f == file_name:
-                    os.remove(os.path.join(dist_dir, f))
-                    print(f"Removed {f}")
+        # ── 3. Remove VitePWA plugin if present (scaffold won't have it) ──
+        content_orig = content
+        content = re.sub(
+            r"import\s+.*VitePWA.*from\s+['\"].*['\"];?\s*",
+            "",
+            content,
+        )
+        content = re.sub(
+            r",?\s*VitePWA\(\{.*?\}\)\s*",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+        if content != content_orig:
+            with open(vite_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print("vite.config.ts: stripped VitePWA plugin")
+        else:
+            print("vite.config.ts: no PWA plugin to strip")
+
+        print("Offline configuration complete")
+
+    - name: Build Offline Bundle
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      run: |
+        cd offline-build
+        npx vite build
 
     - name: Package Dist
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
@@ -169,7 +166,7 @@ jobs:
         RELEASE_DATE=$(date -d "+8 hours" +%Y-%m-%d)
         echo "RELEASE_DATE=$RELEASE_DATE" >> $GITHUB_ENV
 
-        cd official-source/dist
+        cd offline-build/dist
         zip -r ../../transmtf_tracker_update-$RELEASE_DATE.zip *
         cd ../..
 
