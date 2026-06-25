@@ -163,6 +163,41 @@ jobs:
         else:
             print("vite.config.ts: no PWA plugin to strip")
 
+        # ── 4. Fix ./src/ import paths inside src/ copies of root-level source files ──
+        # Root-level sources (logic.ts, pk.ts, ...) reference modules as "./src/..."
+        # because upstream's project root sits one level above src/. When these files are
+        # ALSO copied INTO offline-build/src/ (step 5 above, so src/components/* can reach
+        # them via ../logic), the leading "src/" segment flips from correct to wrong:
+        # "./src/utils/dataEncryption" resolves to src/src/utils/dataEncryption (double
+        # nested) and breaks the Vite build with UNRESOLVED_IMPORT.
+        # Strip the redundant leading "src/" segment so imports resolve relative to src/.
+        # The root-level copies (offline-build/*.ts) intentionally keep "./src/..." and
+        # are NOT touched here. Keep this list in sync with the cp step above.
+        root_source_files = [
+            "logic.ts", "pk.ts", "personalModel.ts",
+            "calibration.ts", "types.ts", "mipd.ts",
+        ]
+        src_dir = os.path.join(build_dir, "src")
+        fixed_files = 0
+        for fname in root_source_files:
+            fpath = os.path.join(src_dir, fname)
+            if not os.path.exists(fpath):
+                continue
+            with open(fpath, "r", encoding="utf-8") as f:
+                src_text = f.read()
+            # "./src/ → "./   "../src/ → "../   (covers static + dynamic import paths,
+            # single/double quotes and template literals)
+            patched = re.sub(r'(["\'`])(\.{1,2}/)src/', r'\1\2', src_text)
+            if patched != src_text:
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(patched)
+                fixed_files += 1
+                print("src/{}: stripped redundant 'src/' segment from imports".format(fname))
+        if fixed_files == 0:
+            print("src/ root-source copies: no './src/' imports needing fix")
+        else:
+            print("src/ root-source copies: fixed {} file(s)".format(fixed_files))
+
         print("Offline configuration complete")
 
     - name: Build Offline Bundle
