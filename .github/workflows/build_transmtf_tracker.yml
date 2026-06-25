@@ -71,14 +71,15 @@ jobs:
         # 3. Copy upstream's entry point to root (keeps './src/...' imports valid)
         cp official-source/index.tsx offline-build/index.tsx
 
-        # 4. Copy root-level source files into src/ for clean organization
-        cp official-source/logic.ts offline-build/src/
-        cp official-source/pk.ts offline-build/src/
-        cp official-source/personalModel.ts offline-build/src/
-        cp official-source/calibration.ts offline-build/src/
-        cp official-source/types.ts offline-build/src/
-        cp official-source/worker.ts offline-build/src/
-        cp official-source/mipd.ts offline-build/src/
+        # 4. Copy root-level source files to PROJECT ROOT (upstream has logic.ts/pk.ts at root,
+        #    and src/pages/* import ../../logic which resolves to project root, not src/)
+        cp official-source/logic.ts offline-build/
+        cp official-source/pk.ts offline-build/
+        cp official-source/personalModel.ts offline-build/
+        cp official-source/calibration.ts offline-build/
+        cp official-source/types.ts offline-build/
+        cp official-source/worker.ts offline-build/
+        cp official-source/mipd.ts offline-build/
 
         # 5. Copy public assets (favicon etc.)
         cp -r official-source/public/* offline-build/public/ 2>/dev/null || true
