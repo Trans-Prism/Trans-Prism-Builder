@@ -71,6 +71,10 @@ jobs:
                     clsx@^2.1.1 tailwind-merge@^3.4.0 \
                     html-to-image@^1.11.13 jsqr@1.4.0 prop-types@15.8.1 \
                     qrcode.react@^4.1.0 react-router-dom@^7.11.0
+        # Install Tailwind CSS + PostCSS to replace the stripped cdn.tailwindcss.com CDN.
+        # Upstream uses the CDN JIT compiler at runtime for ALL utility classes; offline
+        # builds must pre-generate them via PostCSS during vite build.
+        npm install --save-dev tailwindcss@^3.4.7 postcss autoprefixer
 
     - name: Copy Upstream Source into Fresh Project
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
@@ -143,9 +147,17 @@ jobs:
             flags=re.IGNORECASE,
         )
 
+        # Update page title from scaffold default to upstream's "HRT Tracker"
+        html = re.sub(
+            r'<title>.*?</title>',
+            '<title>HRT Tracker</title>',
+            html,
+            flags=re.IGNORECASE,
+        )
+
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(html)
-        print("index.html: entry → ./index.tsx, CDN/importmap stripped")
+        print("index.html: entry → ./index.tsx, CDN/importmap stripped, title → HRT Tracker")
 
         # ── 2. Inject base: './' into vite.config.ts ──
         vite_path = os.path.join(build_dir, "vite.config.ts")
@@ -257,6 +269,70 @@ jobs:
             print("src/ root-source copies: no './src/' imports needing fix")
         else:
             print("src/ root-source copies: fixed {} file(s)".format(fixed_files))
+
+        # ── 5. Create Tailwind CSS + PostCSS config (replace stripped CDN) ──
+        # CRITICAL: upstream relies entirely on cdn.tailwindcss.com JIT compiler for ALL
+        # Tailwind utility classes (flex, p-4, bg-white, rounded-lg, etc.). The CDN script
+        # was stripped in step 1. Without PostCSS + tailwindcss, the built JS has NO CSS
+        # definitions for these classes → the page renders completely unstyled ("毛坯房").
+        # We create PostCSS/Tailwind config files so Vite (which auto-detects postcss.config)
+        # generates the utility CSS during the build. New config files are written as JS/TS
+        # source text (Python f-strings), NOT Python objects — every character lands verbatim.
+
+        # 5a. Create tailwind.config.js (ESM, matching the project's "type": "module")
+        tailwind_config_path = os.path.join(build_dir, "tailwind.config.js")
+        if not os.path.exists(tailwind_config_path):
+            with open(tailwind_config_path, "w", encoding="utf-8") as f:
+                f.write("""/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  theme: { extend: {} },
+  plugins: [],
+}
+""")
+            print("tailwind.config.js: created with src/ content paths")
+        else:
+            print("tailwind.config.js: already exists, skipping")
+
+        # 5b. Create postcss.config.js — Vite auto-detects this in project root
+        postcss_config_path = os.path.join(build_dir, "postcss.config.js")
+        if not os.path.exists(postcss_config_path):
+            with open(postcss_config_path, "w", encoding="utf-8") as f:
+                f.write("""export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+""")
+            print("postcss.config.js: created with tailwindcss + autoprefixer plugins")
+        else:
+            print("postcss.config.js: already exists, skipping")
+
+        # 5c. Create src/index.css with Tailwind directives (entry point for utility CSS)
+        #     Vite processes this via PostCSS → tailwindcss plugin scans content paths.
+        css_path = os.path.join(build_dir, "src", "index.css")
+        if not os.path.exists(css_path):
+            with open(css_path, "w", encoding="utf-8") as f:
+                f.write("""@tailwind base;
+@tailwind components;
+@tailwind utilities;
+""")
+            print("src/index.css: created with Tailwind directives")
+        else:
+            print("src/index.css: already exists, skipping")
+
+        # 5d. Import src/index.css in the entry point (index.tsx) so Vite includes it
+        entry_path = os.path.join(build_dir, "index.tsx")
+        with open(entry_path, "r", encoding="utf-8") as f:
+            entry_content = f.read()
+        if "index.css" not in entry_content:
+            entry_content = "import './src/index.css';\n" + entry_content
+            with open(entry_path, "w", encoding="utf-8") as f:
+                f.write(entry_content)
+            print("index.tsx: prepended import './src/index.css'")
+        else:
+            print("index.tsx: already imports CSS, skipping")
 
         print("Offline configuration complete")
 
