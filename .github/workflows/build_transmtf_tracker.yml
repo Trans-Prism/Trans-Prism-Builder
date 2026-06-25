@@ -71,8 +71,7 @@ jobs:
         # 3. Copy upstream's entry point to root (keeps './src/...' imports valid)
         cp official-source/index.tsx offline-build/index.tsx
 
-        # 4. Copy root-level source files to PROJECT ROOT (upstream has logic.ts/pk.ts at root,
-        #    and src/pages/* import ../../logic which resolves to project root, not src/)
+        # 4. Copy root-level source files to PROJECT ROOT (upstream has logic.ts/pk.ts at root)
         cp official-source/logic.ts offline-build/
         cp official-source/pk.ts offline-build/
         cp official-source/personalModel.ts offline-build/
@@ -81,7 +80,11 @@ jobs:
         cp official-source/worker.ts offline-build/
         cp official-source/mipd.ts offline-build/
 
-        # 5. Copy public assets (favicon etc.)
+        # 5. ALSO copy logic.ts into src/ (src/components/* uses ../logic from src/components/,
+        #    which resolves to src/logic.ts, not root logic.ts)
+        cp official-source/logic.ts offline-build/src/logic.ts
+
+        # 6. Copy public assets (favicon etc.)
         cp -r official-source/public/* offline-build/public/ 2>/dev/null || true
 
     - name: Inject Offline Configuration
