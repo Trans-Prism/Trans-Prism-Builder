@@ -80,9 +80,15 @@ jobs:
         cp official-source/worker.ts offline-build/
         cp official-source/mipd.ts offline-build/
 
-        # 5. ALSO copy logic.ts into src/ (src/components/* uses ../logic from src/components/,
-        #    which resolves to src/logic.ts, not root logic.ts)
+        # 5. ALSO copy all root-level source files into src/
+        #    - src/components/* uses ../logic → src/logic.ts
+        #    - src/logic.ts uses ./types, ./pk, ./calibration, ./personalModel, ./mipd → src/
         cp official-source/logic.ts offline-build/src/logic.ts
+        cp official-source/pk.ts offline-build/src/pk.ts
+        cp official-source/personalModel.ts offline-build/src/personalModel.ts
+        cp official-source/calibration.ts offline-build/src/calibration.ts
+        cp official-source/types.ts offline-build/src/types.ts
+        cp official-source/mipd.ts offline-build/src/mipd.ts
 
         # 6. Copy public assets (favicon etc.)
         cp -r official-source/public/* offline-build/public/ 2>/dev/null || true
