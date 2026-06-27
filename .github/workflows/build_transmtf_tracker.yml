@@ -121,43 +121,38 @@ jobs:
 
         build_dir = "offline-build"
 
-        # ── 1. Rewrite index.html ──
-        # Change entry from ./src/main.tsx → ./index.tsx (upstream structure)
-        # Remove any import map or CDN scripts (scaffold may not have them, but be safe)
-        index_path = os.path.join(build_dir, "index.html")
-        with open(index_path, "r", encoding="utf-8") as f:
+        # ── 1. Use upstream's index.html as base ──
+        # CRITICAL: the scaffold's index.html lacks the upstream's inline <style> block
+        # (8.7 KB of CSS custom properties, animations, glass effects, dark mode theme).
+        # Using the scaffold as base discards all of that → only ~70% visual fidelity.
+        # Instead we take the upstream's index.html, keep everything except CDN scripts,
+        # and let Vite process it as the build template (it already has
+        # <script type="module" src="/index.tsx">).
+        upstream_index = os.path.join("official-source", "index.html")
+        with open(upstream_index, "r", encoding="utf-8") as f:
             html = f.read()
 
-        # Update module entry to point to index.tsx (handle both ./src/main.tsx and /src/main.tsx)
-        html = html.replace('./src/main.tsx', './index.tsx')
-        html = html.replace('/src/main.tsx', '/index.tsx')
-
-        # Remove any import map (safety cleanup)
-        html = re.sub(
-            r'\s*<script type="importmap">.*?</script>\s*',
-            '\n',
-            html,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        # Remove CDN scripts (scaffold won't have this, but upstream index.html did)
+        # Strip CDN Tailwind (replaced by PostCSS plugin in step 5)
         html = re.sub(
             r'<script[^>]*src="https://cdn\.tailwindcss\.com[^"]*"[^>]*></script>\s*',
             '',
             html,
             flags=re.IGNORECASE,
         )
-
-        # Update page title from scaffold default to upstream's "HRT Tracker"
+        # Strip import map (replaced by npm deps in Scaffold step)
         html = re.sub(
-            r'<title>.*?</title>',
-            '<title>HRT Tracker</title>',
+            r'\s*<script type="importmap">.*?</script>\s*',
+            '\n',
             html,
-            flags=re.IGNORECASE,
+            flags=re.DOTALL | re.IGNORECASE,
         )
 
+        # Write as the scaffold's index.html (Vite uses it as build template,
+        # will inject hashed <script>/<link> tags for the built bundles)
+        index_path = os.path.join(build_dir, "index.html")
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(html)
-        print("index.html: entry → ./index.tsx, CDN/importmap stripped, title → HRT Tracker")
+        print("index.html: upstream template with inline <style> preserved, CDN/importmap stripped")
 
         # ── 2. Inject base: './' into vite.config.ts ──
         vite_path = os.path.join(build_dir, "vite.config.ts")
@@ -344,6 +339,77 @@ jobs:
       run: |
         cd offline-build
         npx vite build
+
+    - name: Inject Missing CSS Variables & Glass Classes
+      if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'
+      shell: python
+      run: |
+        import os, glob
+
+        dist_dir = "offline-build/dist"
+        css_files = glob.glob(os.path.join(dist_dir, "assets", "*.css"))
+
+        if not css_files:
+            print("WARNING: No CSS file found in dist/assets/")
+            exit(0)
+
+        css_path = css_files[0]
+        with open(css_path, "r", encoding="utf-8") as f:
+            css = f.read()
+
+        # Check if the upstream's inline <style> block (CSS vars + glass classes)
+        # was preserved in the built output. If not, inject the missing CSS.
+        if "--bg-overlay" in css or "--bg-card" in css:
+            print("CSS variables already present in built output, skipping injection")
+            exit(0)
+
+        print("Upstream inline <style> block was lost during Vite build — injecting fallback CSS variables, glass classes, and button classes")
+
+        # CRITICAL: append AFTER the Tailwind CSS so glass/button classes override
+        # Tailwind utility classes (same specificity but later source order wins).
+        # Also use !important on glass class backgrounds to ensure no Tailwind
+        # utility (e.g. bg-transparent) can override them.
+        #
+        # glass-btn-primary: used by ALL positive action buttons (confirm/save/ok/submit)
+        #   — missing background makes white text buttons invisible.
+        # glass-btn: used by secondary/cancel buttons.
+        # btn-press-glass: scale-down press animation.
+        # accent-spinner: loading spinner inside buttons (e.g. "Generating...").
+        injected = """\
+:root{--bg-primary:#fafbff;--bg-card:#ffffff;--bg-card-hover:#f1f5f9;--bg-secondary:#f1f5f9;--bg-overlay:rgba(15,23,42,0.45);--text-primary:#0f172a;--text-secondary:#475569;--text-tertiary:#94a3b8;--border-primary:#e2e8f0;--border-secondary:#eef2f7;--glass-border:rgba(255,255,255,0.18);--glass-bg-default:rgba(255,255,255,0.72);--glass-bg-heavy:rgba(255,255,255,0.88);--glass-bg-subtle:rgba(255,255,255,0.5);--glass-shadow:0 1px 3px rgba(15,23,42,0.04),0 8px 24px rgba(15,23,42,0.08);--shadow-sm:0 1px 2px rgba(15,23,42,0.06);--shadow-md:0 4px 6px rgba(15,23,42,0.08);--shadow-lg:0 10px 15px -3px rgba(15,23,42,0.08),0 4px 6px -4px rgba(15,23,42,0.04)}
+.dark{--bg-primary:#0b1220;--bg-card:#111827;--bg-card-hover:#1f2937;--bg-secondary:#1f2937;--bg-overlay:rgba(0,0,0,0.6);--text-primary:#f1f5f9;--text-secondary:#cbd5e1;--text-tertiary:#94a3b8;--border-primary:#1f2937;--border-secondary:#243042;--glass-border:rgba(255,255,255,0.06);--glass-bg-default:rgba(30,41,59,0.82);--glass-bg-heavy:rgba(30,41,59,0.92);--glass-bg-subtle:rgba(30,41,59,0.5);--glass-shadow:0 1px 3px rgba(0,0,0,0.3),0 8px 24px rgba(0,0,0,0.4);--shadow-sm:0 1px 2px rgba(0,0,0,0.3);--shadow-md:0 4px 6px rgba(0,0,0,0.3);--shadow-lg:0 10px 15px -3px rgba(0,0,0,0.4),0 4px 6px -4px rgba(0,0,0,0.2)}
+.glass-card,.glass-card*{background:var(--glass-bg-default)!important;border-color:var(--glass-border)!important}.glass-card{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:var(--shadow-sm)}
+.glass-heavy{background:var(--glass-bg-heavy)!important;border:1px solid var(--glass-border)!important;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--glass-shadow)}
+.glass-noise{position:relative}.glass-noise::before{content:"";position:absolute;inset:0;opacity:.03;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:256px 256px;pointer-events:none;z-index:0;border-radius:inherit}.glass-noise>*{position:relative;z-index:1}
+.glass-modal{background:var(--bg-card)!important;border:1px solid var(--border-primary)!important;box-shadow:0 1px 3px rgba(15,23,42,0.04),0 8px 24px rgba(15,23,42,0.08),0 24px 64px rgba(15,23,42,0.12)}.dark .glass-modal{box-shadow:0 1px 3px rgba(0,0,0,0.3),0 8px 24px rgba(0,0,0,0.4),0 24px 64px rgba(0,0,0,0.5)}
+.glass-accent{background:linear-gradient(135deg,rgba(var(--accent-rgb),0.08),var(--bg-card))!important}
+.modal-spring-glass{animation:modalScaleIn 0.25s ease-out forwards}
+@keyframes modalScaleIn{0%{opacity:0;transform:scale(0.94) translateY(6px)}60%{opacity:1;transform:scale(1.01) translateY(-1px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.animate-in{animation:animateIn 0.15s ease-out forwards}
+@keyframes animateIn{0%{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.15s ease-out forwards}
+@keyframes fadeIn{0%{opacity:0}to{opacity:1}}
+.zoom-in-95{animation:zoomIn95 0.15s ease-out forwards}
+@keyframes zoomIn95{0%{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+.duration-100{animation-duration:0.1s}
+.glass-btn-primary{background:var(--accent-500)!important;color:#fff!important;border:1px solid transparent!important;transition:background 0.2s ease,transform 0.15s ease,box-shadow 0.15s ease!important}
+.glass-btn-primary:hover{background:var(--accent-600)!important}
+.glass-btn-primary:active{transform:scale(0.96)!important}
+.glass-btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.glass-btn{background:var(--glass-bg-default)!important;color:var(--text-primary)!important;border:1px solid var(--glass-border)!important;transition:background 0.2s ease,transform 0.15s ease,box-shadow 0.15s ease!important}
+.glass-btn:hover{background:var(--glass-bg-heavy)!important}
+.glass-btn:active{transform:scale(0.96)!important}
+.btn-press-glass{transition:transform 0.15s ease,box-shadow 0.15s ease!important}
+.btn-press-glass:active{transform:scale(0.96)!important}
+.accent-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:accentSpin 0.6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes accentSpin{to{transform:rotate(360deg)}}
+"""
+
+        css = css + injected
+        with open(css_path, "w", encoding="utf-8") as f:
+            f.write(css)
+
+        print(f"Appended fallback CSS to {css_path} ({len(injected)} bytes appended at tail)")
 
     - name: Package Dist
       if: steps.check.outputs.HAS_CHANGES == 'true' || github.event_name == 'workflow_dispatch'

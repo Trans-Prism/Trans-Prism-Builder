@@ -172,9 +172,9 @@ Builder 按上游项目分为 6 个子目录（`mtf/`、`ftm/`、`Mio/`、`rle/`
 ### 6. [`build_transmtf_tracker.yml`](Trans-Prism-Builder/.github/workflows/build_transmtf_tracker.yml) — TransMTF HRT Tracker 构建
 - **触发**：`cron: '30 19 * * *'`（UTC 19:30 = 北京 03:30）接在 Oyama Tracker 之后错峰；`workflow_dispatch`
 - **上游**：`https://github.com/TransmtfTeam/Transmtf-HRT-Tracker.git`（Vite + React + TypeScript，含 react-router-dom v7 多路由 SPA）
-- **执行**：Node.js 20；`git clone --depth 1`；用内联 Python 注入 `base: './'`（相对路径）→ Python 剥离 import map + Tailwind CDN（强制 Vite bundle 全部依赖）→ `npm install && npm run build` → Python 剥离 PWA Service Worker 注册 → 打包 `dist/`
+- **执行**：Node.js 20；`git clone --depth 1`；用内联 Python 注入 `base: './'`（相对路径）→ Python 剥离 import map + Tailwind CDN（强制 Vite bundle 全部依赖）→ `npm install && npm run build` → **Python 注入缺失 CSS 变量（`:root` 主题/glass/animation 类，上游 inline `<style>` 丢失兜底）** → Python 剥离 PWA Service Worker 注册 → 打包 `dist/`
 - **产出**：ZIP `transmtf_tracker_update-{date}.zip`，tag `transmtf_tracker-{date}`，用 `gh release create`
-- **特殊点**：不经过 MkDocs，是纯前端构建；剥离 import map + Tailwind CDN（消除运行时 CDN 依赖）→ Vite 从 node_modules bundle 全部依赖；额外剥离 `vite-plugin-pwa` 生成的 Service Worker（避免 WebView 内缓存冲突）；指纹日志写到 `transmtf_tracker/last_sync_hash.txt`
+- **特殊点**：不经过 MkDocs，是纯前端构建；剥离 import map + Tailwind CDN（消除运行时 CDN 依赖）→ Vite 从 node_modules bundle 全部依赖；额外剥离 `vite-plugin-pwa` 生成的 Service Worker（避免 WebView 内缓存冲突）；**PostCSS Tailwind 生成的 CSS 不含上游 inline `<style>` 块中的主题变量（`--bg-overlay`/`--bg-card`/`--text-primary` 等）与玻璃效果类（`glass-heavy`/`glass-noise`/`glass-card`），后注入步骤在 `dist/assets/*.css` 前插入 fallback 定义**；指纹日志写到 `transmtf_tracker/last_sync_hash.txt`
 
 ### 7. [`sync_builder_to_r2.yml`](Trans-Prism-Builder/.github/workflows/sync_builder_to_r2.yml) — R2 分发器
 - **触发**：`workflow_run`——当上述 6 个构建 Workflow **任一 completed** 时自动级联；`workflow_dispatch` 手动测试
