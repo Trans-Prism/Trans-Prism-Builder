@@ -29,7 +29,10 @@ jobs:
             echo "🔍 正在检索分类: $proj"
             
             # 使用 jq 精准过滤出以该前缀开头的【最新一个】 Tag
-            LATEST_TAG=$(gh api repos/${{ github.repository }}/releases --jq '[.[] | select(.tag_name | startswith("'"$proj"'"))] | .[0].tag_name')
+            # ⚠️ 修复：gh api 默认只返回第一页（30 条），仓库 Release 超 30 个时
+            # 旧项目的 Release 会落在第二页，导致误判为"未找到"。
+            # 改用 --limit 1000 确保覆盖所有历史 Release。
+            LATEST_TAG=$(gh release list --limit 1000 --json tagName --jq '[.[] | select(.tagName | startswith("'"$proj"'"))] | .[0].tagName')
             
             if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ]; then
               echo "⚠️ 未找到 $proj 的历史发布记录，跳过。"
