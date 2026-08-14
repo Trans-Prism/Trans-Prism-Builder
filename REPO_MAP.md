@@ -2,6 +2,7 @@
 
 > 本文档基于对仓库源码的逐文件阅读生成，帮助 AI 快速理解内容构建流水线。
 > 仓库是唯一真实来源；若文档与代码冲突，以代码为准。
+> workspace 根目录另有 **开发辅助子系统** [`rag-system/`](../rag-system/mcp_bridge_bge.py:1)（RAG 知识库 MCP Bridge，供本地 AI Agent 检索生态文档），属 workspace 级组件、不属于本 Builder 仓库；其配置双写点（Zoo/Roo 两处 mcp.json）与 mcp 锁 1.x 约束见 ADR-011 与 SYSTEM_MAP 对应章节。
 
 ---
 
@@ -18,6 +19,8 @@ Trans-Prism-Builder 是 Trans Prism 生态中的 **云端内容构建与分发�
 7. **闭环** 把上游 Commit Hash 回写为本地下次比对基准。
 
 最终消费者是 Flutter 客户端 `Trans_Prism`，它通过 R2 直链拉取这些 ZIP 实现离线 Wiki 与 HRT Tracker 的热更新。Builder 解决了"多源异构内容 → 统一离线包"这一核心矛盾。
+
+> **与 App 侧更新入口的边界**：Builder 只负责把 ZIP 推到 R2 并生成 `{proj}_latest.json`，不感知 App 内的触发方式。App 侧「我的 → 高级与系统 → 检查更新」手动入口（`Trans_Prism/lib/main.dart` 的 `_handleCheckUpdate`）与首页静默检测、Wiki 列表页批量检查共用同一批 R2 版本协商服务（`UpdateService` / `WikiUpdateManager`），对本仓库产物无任何特殊耦合。
 
 ---
 
