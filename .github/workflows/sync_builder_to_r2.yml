@@ -51,7 +51,10 @@ jobs:
             # 2. 🧹 核心修复：清理 /latest/ 目录下的旧同类文件
             # 删掉所有含有该前缀的 .zip 文件，防止文件名带有不同日期导致堆积
             echo "正在清理 /latest/ 目录中的旧版 $proj..."
-            aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --recursive --exclude "*" --include "$proj*.zip" --endpoint-url ${{ secrets.R2_ENDPOINT }}
+            # 注意 tracker 的文件名是 hrt_tracker_update-*.zip，用 tracker*.zip 匹配不上
+            CLEAN_GLOB="$proj*.zip"
+            if [ "$proj" = "tracker" ]; then CLEAN_GLOB="hrt_tracker_update-*.zip"; fi
+            aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --recursive --exclude "*" --include "$CLEAN_GLOB" --endpoint-url ${{ secrets.R2_ENDPOINT }}
             
             # 3. 📝 生成 Vibe 客户端需要的 latest.json
             # 提取刚下载的 zip 文件名
@@ -61,5 +64,25 @@ jobs:
             
             # 4. 同步新的文件和对应的 json 到 /latest/
             aws s3 sync release_assets s3://${{ secrets.R2_BUCKET_NAME }}/builder/latest/ --endpoint-url ${{ secrets.R2_ENDPOINT }}
+
+            # 5. 🧹 R2 归档只留两版：最新 + 上一个（省免费额度）
+            # 以 GitHub Release 新旧排序为准（gh release list 默认最新在前），
+            # 第 3 个起的旧 tag 对应 R2 目录直接删；R2 上残留的孤儿目录也一并清理。
+            echo "正在清理 $proj 的旧归档，只保留最新两版..."
+            ALL_TAGS=$(gh release list --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("'"$proj"'"))] | .[].tagName')
+            echo "$ALL_TAGS" | tail -n +3 | while read -r OLD_TAG; do
+              [ -z "$OLD_TAG" ] && continue
+              echo "删除旧归档: builder/releases/$OLD_TAG/"
+              aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/$OLD_TAG/ --recursive --endpoint-url ${{ secrets.R2_ENDPOINT }}
+            done
+            KEEP1=$(echo "$ALL_TAGS" | sed -n '1p')
+            KEEP2=$(echo "$ALL_TAGS" | sed -n '2p')
+            R2_DIRS=$(aws s3 ls s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/ --endpoint-url ${{ secrets.R2_ENDPOINT }} | awk '{print $2}' | tr -d '/' | grep "^${proj}" || true)
+            for d in $R2_DIRS; do
+              if [ "$d" != "$KEEP1" ] && [ "$d" != "$KEEP2" ]; then
+                echo "删除孤儿归档: builder/releases/$d/"
+                aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/builder/releases/$d/ --recursive --endpoint-url ${{ secrets.R2_ENDPOINT }}
+              fi
+            done
             
           done
