@@ -132,7 +132,7 @@ Builder 按上游项目分为 6 个子目录（`mtf/`、`ftm/`、`Mio/`、`rle/`
 |------|------|
 | [`mkdocs.yml`](Trans-Prism-Builder/mtf/mkdocs.yml) 等 | MkDocs 构建配置（站点名、docs_dir、Material 主题、markdown_extensions、awesome-pages 插件）|
 | `last_sync_hash.txt` | 记录上次成功构建时上游 HEAD 的 Commit Hash，作为下次"Cron 跳过判定"的比对基准 |
-| [`LICENSE.txt`](Trans-Prism-Builder/LICENSE.txt) | Apache 2.0 原创代码授权 |
+| [`LICENSE.txt`](Trans-Prism-Builder/LICENSE.txt) | Apache 2.0 原创代码授权 + 重要声明（知识库内容作为独立模块，继承上游 CC BY-SA 4.0 / CC BY-ND 4.0，已获 Project Trans 与 MioMtFWiki 授权）|
 
 ---
 

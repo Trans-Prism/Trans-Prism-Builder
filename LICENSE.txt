@@ -198,3 +198,7 @@ GitHub Actions 工作流配置、MkDocs 配置文件等）遵循 Apache License,
   - MtF-Wiki, FtM-Wiki, Rle-Wiki 衍生内容 → CC BY-SA 4.0
   - Mio-Mtf-Wiki 衍生内容 → CC BY-ND 4.0
 * 上述上游内容不在 Apache 2.0 许可范围内，使用它们时请遵循各自上游的许可条款。
+
+知识库内容是**独立于构建流水线的模块**，随产物打包分发，不并入本仓库的原创
+代码；该模块自身即按 CC BY-SA 4.0 / CC BY-ND 4.0 分发，满足 ShareAlike 要求。
+本项目已就内置知识库内容取得 Project Trans 与 MioMtFWiki 的授权。

@@ -94,6 +94,9 @@ mtf/  ftm/  Mio/  rle/  tracker/  transmtf_tracker/  # 各项目目录
 - **Oyama HRT Tracker 衍生**：[MIT](https://opensource.org/licenses/MIT)
 - **TransMTF HRT Tracker 衍生**：[MIT](https://opensource.org/licenses/MIT)
 
+知识库内容作为**独立于构建流水线的模块**随产物分发，不并入本仓库原创代码；
+本项目已就内置知识库内容取得 Project Trans 与 MioMtFWiki 的授权。
+
 ---
 
 ## 👨‍💻 开发者参考
